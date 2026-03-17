@@ -1,9 +1,6 @@
-"""
-Punkt startowy aplikacji.
-Uruchom:  python main.py
-"""
-from gui.main_window import MainApp
+from gui_app import MainWindow
+
 
 if __name__ == "__main__":
-    app = MainApp()
+    app = MainWindow()
     app.mainloop()
