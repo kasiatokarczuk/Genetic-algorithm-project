@@ -6,28 +6,32 @@ from dataclasses import dataclass
 from typing import Callable
 
 
+# Punkty do zakresu poszukiwań dla funkcji Rosenbrock
 A = -2.048
 B = 2.048
 
 
+# Reprezentacja jednej zmiennej jako bity
 class Chromosome:
-    """Jeden chromosom = jedna zmienna zakodowana binarnie."""
 
+    # Konstruktor tworzący chromosom (brak podanych - generowanie losowych)
     def __init__(self, bits_count: int, bits: list[int] | None = None):
         self.bits_count = bits_count
         self.bits = bits[:] if bits is not None else [random.randint(0, 1) for _ in range(bits_count)]
 
+    # Kopiowanie, aby nie nadpisywać
     def copy(self) -> "Chromosome":
         return Chromosome(self.bits_count, self.bits)
 
+    # Dekodowanie bitów na liczbę rzeczywistą
     def decode(self, a: float = A, b: float = B) -> float:
         decimal = int("".join(str(bit) for bit in self.bits), 2)
-        max_decimal = (2 ** self.bits_count) - 1
-        return a + (decimal / max_decimal) * (b - a)
+        max_decimal = (2 ** self.bits_count) - 1  # Największa możliwa liczba
+        return a + (decimal / max_decimal) * (b - a)  # Skalowanie do zakresu [A,B]
 
 
+# Tworzenie rozwiązania (wektor zmiennych)
 class Individual:
-    """Osobnik składa się z N chromosomów."""
 
     def __init__(self, variables_count: int, bits_per_variable: int, chromosomes: list[Chromosome] | None = None):
         self.variables_count = variables_count
@@ -48,15 +52,18 @@ class Individual:
         copied.fitness = self.fitness
         return copied
 
+    # Zamiana osobnika na liczby
     def decode(self) -> list[float]:
         return [chrom.decode() for chrom in self.chromosomes]
 
+    # Łączenie chromosomów w jeden ciąg (używane do krzyżowania)
     def all_bits(self) -> list[int]:
         bits: list[int] = []
         for chrom in self.chromosomes:
             bits.extend(chrom.bits)
         return bits
 
+    # Łączenie bitów w osobnika (używane po krzyżowaniu)
     @classmethod
     def from_all_bits(cls, bits: list[int], variables_count: int, bits_per_variable: int) -> "Individual":
         chromosomes = []
@@ -67,6 +74,7 @@ class Individual:
         return cls(variables_count, bits_per_variable, chromosomes)
 
 
+# Funkcja celu - Rosenbrock
 def rosenbrock(values: list[float]) -> float:
     total = 0.0
     for i in range(len(values) - 1):
@@ -80,6 +88,7 @@ def value_to_fitness(value: float, maximize: bool) -> float:
     return 1.0 / (1.0 + value)
 
 
+# Funkcja do oceny populacji
 def evaluate_population(population: list[Individual], objective_function: Callable[[list[float]], float], maximize: bool) -> None:
     for individual in population:
         values = individual.decode()
@@ -87,14 +96,15 @@ def evaluate_population(population: list[Individual], objective_function: Callab
         individual.fitness = value_to_fitness(individual.value, maximize)
 
 
-# -------------------- Selekcja --------------------
+# --- SELEKCJA ---
 
+# Sortowanie osobników i wybór najlepszych
 def select_best(population: list[Individual], count: int, maximize: bool) -> list[Individual]:
     key = (lambda ind: ind.value)
     sorted_population = sorted(population, key=key, reverse=maximize)
     return [ind.copy() for ind in sorted_population[:count]]
 
-
+# Losowanie grup i wybór najlepszych oosbników
 def select_tournament(population: list[Individual], count: int, maximize: bool, tournament_size: int = 3) -> list[Individual]:
     selected = []
     for _ in range(count):
@@ -103,7 +113,7 @@ def select_tournament(population: list[Individual], count: int, maximize: bool, 
         selected.append(winner.copy())
     return selected
 
-
+# Losowanie osobników z danym prawdopodobieństwem i wybór najlepszych
 def select_roulette(population: list[Individual], count: int, maximize: bool) -> list[Individual]:
     if maximize:
         weights = [max(ind.value, 0.0) + 1e-9 for ind in population]
@@ -113,8 +123,9 @@ def select_roulette(population: list[Individual], count: int, maximize: bool) ->
     return [ind.copy() for ind in chosen]
 
 
-# -------------------- Krzyżowanie --------------------
+# --- KRZYŻOWANIE ---
 
+# Jeden punkt podziału
 def crossover_single_point(parent1: Individual, parent2: Individual) -> tuple[Individual, Individual]:
     bits1 = parent1.all_bits()
     bits2 = parent2.all_bits()
@@ -126,7 +137,7 @@ def crossover_single_point(parent1: Individual, parent2: Individual) -> tuple[In
         Individual.from_all_bits(child2_bits, parent1.variables_count, parent1.bits_per_variable),
     )
 
-
+# Dwa punkty podziału
 def crossover_two_point(parent1: Individual, parent2: Individual) -> tuple[Individual, Individual]:
     bits1 = parent1.all_bits()
     bits2 = parent2.all_bits()
@@ -138,7 +149,7 @@ def crossover_two_point(parent1: Individual, parent2: Individual) -> tuple[Indiv
         Individual.from_all_bits(child2_bits, parent1.variables_count, parent1.bits_per_variable),
     )
 
-
+# Losowo
 def crossover_uniform(parent1: Individual, parent2: Individual) -> tuple[Individual, Individual]:
     bits1 = parent1.all_bits()
     bits2 = parent2.all_bits()
@@ -156,7 +167,7 @@ def crossover_uniform(parent1: Individual, parent2: Individual) -> tuple[Individ
         Individual.from_all_bits(child2_bits, parent1.variables_count, parent1.bits_per_variable),
     )
 
-
+# Zamiana bloków na bity
 def crossover_granular(parent1: Individual, parent2: Individual, grain_size: int = 4) -> tuple[Individual, Individual]:
     bits1 = parent1.all_bits()
     bits2 = parent2.all_bits()
@@ -173,8 +184,9 @@ def crossover_granular(parent1: Individual, parent2: Individual, grain_size: int
     )
 
 
-# -------------------- Mutacje i inwersja --------------------
+# --- MUTACJE ---
 
+# Zamiana pierwszego i ostatniego bitu
 def mutation_edge(individual: Individual, probability: float) -> Individual:
     child = individual.copy()
     if random.random() < probability:
@@ -186,8 +198,7 @@ def mutation_edge(individual: Individual, probability: float) -> Individual:
         child.chromosomes[chrom_index].bits[bit_index] ^= 1
     return child
 
-
-
+# Zamiana jednego bitu
 def mutation_single_point(individual: Individual, probability: float) -> Individual:
     child = individual.copy()
     if random.random() < probability:
@@ -196,8 +207,7 @@ def mutation_single_point(individual: Individual, probability: float) -> Individ
         child.chromosomes[chrom_index].bits[bit_index] ^= 1
     return child
 
-
-
+# Zamiana dwóch bitów
 def mutation_two_point(individual: Individual, probability: float) -> Individual:
     child = individual.copy()
     if random.random() < probability:
@@ -210,6 +220,8 @@ def mutation_two_point(individual: Individual, probability: float) -> Individual
 
 
 
+# --- INWERSJA ---
+
 def inversion(individual: Individual, probability: float) -> Individual:
     child = individual.copy()
     if random.random() < probability:
@@ -220,6 +232,7 @@ def inversion(individual: Individual, probability: float) -> Individual:
     return child
 
 
+# Konfiguracja (wszystkie parametry)
 @dataclass
 class GAConfig:
     population_size: int = 50
@@ -237,6 +250,7 @@ class GAConfig:
     maximize: bool = False
 
 
+# Wyniki
 @dataclass
 class GAResult:
     best_value: float
@@ -267,6 +281,7 @@ MUTATIONS = {
 }
 
 
+# Główna klasa algorytmu
 class GeneticAlgorithm:
     def __init__(self, config: GAConfig, progress_callback: Callable[[int, float, float], None] | None = None):
         self.config = config
@@ -276,15 +291,18 @@ class GeneticAlgorithm:
     def stop(self) -> None:
         self.should_stop = True
 
+    # Tworzenie populacji
     def _create_population(self) -> list[Individual]:
         return [Individual(self.config.variables_count, self.config.bits_per_variable) for _ in range(self.config.population_size)]
 
+    # Elita (zachowanie najlepszych)
     def _get_elite(self, population: list[Individual]) -> list[Individual]:
         if self.config.elite_size <= 0:
             return []
         ordered = sorted(population, key=lambda ind: ind.value, reverse=self.config.maximize)
         return [ind.copy() for ind in ordered[: self.config.elite_size]]
 
+    # Selekcja
     def _select(self, population: list[Individual]) -> list[Individual]:
         count = self.config.population_size - self.config.elite_size
         selection = SELECTIONS[self.config.selection_method]
@@ -292,6 +310,7 @@ class GeneticAlgorithm:
             return selection(population, count, self.config.maximize, self.config.tournament_size)
         return selection(population, count, self.config.maximize)
 
+    # Krzyżowanie
     def _crossover(self, parents: list[Individual]) -> list[Individual]:
         random.shuffle(parents)
         crossover = CROSSOVERS[self.config.crossover_method]
@@ -308,10 +327,12 @@ class GeneticAlgorithm:
             children.append(parents[-1].copy())
         return children
 
+    # Mutacja
     def _mutate(self, children: list[Individual]) -> list[Individual]:
         mutation = MUTATIONS[self.config.mutation_method]
         return [mutation(child, self.config.mutation_probability) for child in children]
 
+    # Inwersja
     def _invert(self, children: list[Individual]) -> list[Individual]:
         return [inversion(child, self.config.inversion_probability) for child in children]
 
@@ -323,6 +344,7 @@ class GeneticAlgorithm:
         history_best: list[float] = []
         history_avg: list[float] = []
 
+        # Główna pętla algorytmu
         for epoch in range(1, self.config.epochs + 1):
             if self.should_stop:
                 break
